@@ -1,62 +1,66 @@
-const express = require("express");
-const todoRoutes = express.Router();
+const todoRoutes = require("express").Router();
 const dataModel = require("../Models/DataModel");
+const authMiddleware = require("../middleware/authMiddleware"); // Import auth middleware
 
-// Get todos
+// Apply authentication middleware to all routes
+todoRoutes.use(authMiddleware);
+
+// Get all todos for the logged-in user
 todoRoutes.get("/getTodo", async (req, res) => {
   try {
     const { _id } = req.user;
-    console.log("Fetching todos for user:", _id);
-    
-    const todoList = await dataModel.findById(_id);
-    if (!todoList) return res.status(404).json({ error: "No todos found" });
+    console.log("User ID from token:", _id);
 
-    res.json(todoList.todos);
+    let todo = await dataModel.findById(_id);
+    if (!todo) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    res.json(todo.todos);
   } catch (error) {
     console.error("Error fetching todos:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// Post a new todo
+// Add a new todo
 todoRoutes.post("/postTodo", async (req, res) => {
   try {
     const { _id } = req.user;
     const todo = req.body;
 
-    console.log(`Posting todo for user ${_id}:`, todo);
+    let userTodo = await dataModel.findById(_id);
+    if (!userTodo) {
+      return res.status(404).json({ error: "User not found" });
+    }
 
-    const userTodos = await dataModel.findById(_id);
-    if (!userTodos) return res.status(404).json({ error: "User not found" });
-
-    await dataModel.findByIdAndUpdate(_id, { $push: { todos: todo } }, { new: true });
-
+    await dataModel.findByIdAndUpdate(_id, { $push: { todos: todo } });
     res.json({ success: "Posted Successfully" });
   } catch (error) {
     console.error("Error posting todo:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
-// Update a todo
+// Update todo status
 todoRoutes.patch("/updateTodo/:todoId", async (req, res) => {
   try {
-    const { _id } = req.user;
     const { todoId } = req.params;
     const { status } = req.body;
 
-    const result = await dataModel.findOneAndUpdate(
-      { _id: _id, "todos.todoId": todoId },
+    const updatedTodo = await dataModel.findOneAndUpdate(
+      { "todos.todoId": todoId },
       { $set: { "todos.$.status": status } },
       { new: true }
     );
 
-    if (!result) return res.status(404).json({ error: "Todo not found" });
+    if (!updatedTodo) {
+      return res.status(404).json({ error: "Todo not found" });
+    }
 
     res.json({ success: "Updated successfully" });
   } catch (error) {
     console.error("Error updating todo:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
@@ -66,18 +70,17 @@ todoRoutes.delete("/deleteTodo/:todoId", async (req, res) => {
     const { _id } = req.user;
     const { todoId } = req.params;
 
-    const result = await dataModel.findByIdAndUpdate(
-      _id,
-      { $pull: { todos: { todoId: todoId } } },
-      { new: true }
-    );
+    let userTodo = await dataModel.findById(_id);
+    if (!userTodo) {
+      return res.status(404).json({ error: "User not found" });
+    }
 
-    if (!result) return res.status(404).json({ error: "Todo not found" });
+    await dataModel.findByIdAndUpdate(_id, { $pull: { todos: { todoId } } });
 
     res.json({ success: "Deleted successfully" });
   } catch (error) {
     console.error("Error deleting todo:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: "Server error" });
   }
 });
 
